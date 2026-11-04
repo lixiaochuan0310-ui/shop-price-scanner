@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'shop-price-scanner-v1.1-source.zip'
+      - 'shop-price-scanner-v1.1.1-source.zip'
       - '.github/workflows/build-v11.yml'
 
 jobs:
@@ -26,9 +26,9 @@ jobs:
 
       - name: Build V1.1 APK
         run: |
-          test -f shop-price-scanner-v1.1-source.zip
+          test -f shop-price-scanner-v1.1.1-source.zip
           mkdir -p source-v11
-          unzip -q shop-price-scanner-v1.1-source.zip -d source-v11
+          unzip -q shop-price-scanner-v1.1.1-source.zip -d source-v11
           test -f source-v11/settings.gradle
           test -f source-v11/app/build.gradle
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
