@@ -1,1 +1,42 @@
+name: Build Shop Price Scanner V1.1 APK
 
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'shop-price-scanner-v1.1-source.zip'
+      - '.github/workflows/build-v11.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v4
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Build V1.1 APK
+        run: |
+          test -f shop-price-scanner-v1.1-source.zip
+          mkdir -p source-v11
+          unzip -q shop-price-scanner-v1.1-source.zip -d source-v11
+          test -f source-v11/settings.gradle
+          test -f source-v11/app/build.gradle
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          cd source-v11
+          gradle --no-daemon assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shop-price-scanner-v11-apk
+          path: source-v11/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
