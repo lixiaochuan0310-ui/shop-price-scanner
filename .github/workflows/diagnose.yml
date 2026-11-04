@@ -1,0 +1,93 @@
+name: Diagnose scanner crash
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/diagnose.yml"
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: shop-price-scanner-apk
+          run-id: 41800671726
+          github-token: ${{ github.token }}
+          path: apk
+
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm || true
+
+      - name: Test scanner in Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 33
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: |
+            set +e
+            APK="$(find apk -type f -name '*.apk' -print -quit)"
+            adb install "$APK" > install.txt 2>&1
+            adb shell pm grant com.localpricescan.app android.permission.CAMERA
+            adb logcat -c
+            adb shell am start -W -n com.localpricescan.app/.MainActivity > launch.txt 2>&1
+            sleep 3
+            adb shell uiautomator dump /sdcard/window.xml
+            adb pull /sdcard/window.xml window.xml
+            python3 - <<'PY'
+            import re
+            import subprocess
+            from pathlib import Path
+            import xml.etree.ElementTree as ET
+
+            result = "Scan button not found"
+            try:
+                root = ET.parse("window.xml").getroot()
+                nodes = [n for n in root.iter() if
+                         "scanButton" in n.attrib.get("resource-id", "")
+                         or "扫码查询" in n.attrib.get("text", "")]
+                if nodes:
+                    bounds = nodes[0].attrib.get("bounds", "")
+                    nums = list(map(int, re.findall(r"\d+", bounds)))
+                    if len(nums) == 4:
+                        x = (nums[0] + nums[2]) // 2
+                        y = (nums[1] + nums[3]) // 2
+                        subprocess.run(["adb", "shell", "input", "tap", str(x), str(y)])
+                        result = "Tapped scan button"
+            except Exception as e:
+                result = str(e)
+
+            if result != "Tapped scan button":
+                subprocess.run(["adb", "shell", "am", "start",
+                                "-n", "com.localpricescan.app/.PortraitCaptureActivity"])
+                result += "; tried scanner activity directly"
+            Path("scan-action.txt").write_text(result)
+            PY
+            sleep 10
+            adb logcat -d -b crash -v threadtime > crash.txt
+            adb logcat -d -v threadtime > full-log.txt
+            grep -Ei 'FATAL EXCEPTION|AndroidRuntime|localpricescan|zxing|Camera' full-log.txt | tail -n 350 > filtered-log.txt
+            adb shell dumpsys activity activities > activity.txt
+
+      - name: Upload diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scanner-crash-logs
+          path: |
+            install.txt
+            launch.txt
+            window.xml
+            scan-action.txt
+            crash.txt
+            filtered-log.txt
+            activity.txt
+          if-no-files-found: warn
