@@ -40,6 +40,8 @@ jobs:
           s = s.replace(r"(?:\.[0-9]{1,2})", r"(?:\\.[0-9]{1,2})")
           s = s.replace("findViewById(R.id.scanButton).post(this::launchScanner);", "")
           p.write_text(s)
+          m = Path(sys.argv[1]) / "app/src/main/AndroidManifest.xml"
+          m.write_text(m.read_text().replace('android:name=".PortraitCaptureActivity"', 'android:name=".PortraitCaptureActivity" android:theme="@style/zxing_CaptureTheme" android:stateNotNeeded="true"'))
           PY
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
           cd "$ROOT"
