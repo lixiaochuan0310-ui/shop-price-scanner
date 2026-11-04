@@ -38,6 +38,7 @@ jobs:
           p = Path(sys.argv[1]) / "app/src/main/java/com/localpricescan/app/MainActivity.java"
           s = p.read_text()
           s = s.replace(r"(?:\.[0-9]{1,2})", r"(?:\\.[0-9]{1,2})")
+          s = s.replace("findViewById(R.id.scanButton).post(this::launchScanner);", "")
           p.write_text(s)
           PY
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
