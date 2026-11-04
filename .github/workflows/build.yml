@@ -42,6 +42,8 @@ jobs:
           p.write_text(s)
           m = Path(sys.argv[1]) / "app/src/main/AndroidManifest.xml"
           m.write_text(m.read_text().replace('android:name=".PortraitCaptureActivity"', 'android:name=".PortraitCaptureActivity" android:theme="@style/zxing_CaptureTheme" android:stateNotNeeded="true"'))
+          g = Path(sys.argv[1]) / "app/build.gradle"
+          g.write_text(g.read_text().replace("dependencies {", "dependencies {\n    implementation 'androidx.core:core:1.13.1'") )
           PY
           sdkmanager "platforms;android-35" "build-tools;35.0.0"
           cd "$ROOT"
