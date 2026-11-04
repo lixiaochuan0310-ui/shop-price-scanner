@@ -1,0 +1,51 @@
+name: Build Android APK
+
+on:
+  push:
+    paths:
+      - "*.zip"
+      - ".github/workflows/build.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build APK
+        run: |
+          mkdir -p source
+          ZIP="$(find . -maxdepth 1 -name '*.zip' -print -quit)"
+          test -n "$ZIP"
+          unzip -q "$ZIP" -d source
+          ROOT="$(dirname "$(find source -name settings.gradle -print -quit)")"
+          test -f "$ROOT/app/build.gradle"
+          python3 - "$ROOT" <<'PY'
+          import sys
+          from pathlib import Path
+          p = Path(sys.argv[1]) / "app/src/main/java/com/localpricescan/app/MainActivity.java"
+          s = p.read_text()
+          s = s.replace(r"(?:\.[0-9]{1,2})", r"(?:\\.[0-9]{1,2})")
+          p.write_text(s)
+          PY
+          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          cd "$ROOT"
+          gradle --no-daemon assembleDebug
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: shop-price-scanner-apk
+          path: source/**/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
