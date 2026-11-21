@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - 'shop-price-scanner-v1.1.2-fixed-sign-source.zip'
+      - 'shop-price-scanner-v*-fixed-sign-source.zip'
       - '.github/workflows/build-release.yml'
 
 permissions:
@@ -29,36 +29,42 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Build APK with fixed release signing key
+      - name: Build fixed-signature release APK
         shell: bash
         run: |
           set -euo pipefail
           if [ -z "${SHOP_SIGNING_PASSWORD:-}" ]; then
-            echo '::error::Please configure SHOP_SIGNING_PASSWORD.'
+            echo '::error::Missing SHOP_SIGNING_PASSWORD'
             exit 1
           fi
-          test -f shop-price-scanner-v1.1.2-fixed-sign-source.zip
-          mkdir -p source-v112
-          unzip -q shop-price-scanner-v1.1.2-fixed-sign-source.zip -d source-v112
-          test -f source-v112/settings.gradle
-          test -f source-v112/app/build.gradle
-          test -f source-v112/signing/release-keystore.p12.enc
+
+          ZIP="$(find . -maxdepth 1 -name 'shop-price-scanner-v*-fixed-sign-source.zip' -printf '%f\n' | sort -V | tail -n 1)"
+          test -n "$ZIP"
+          mkdir -p source-release
+          unzip -q "$ZIP" -d source-release
+          test -f source-release/settings.gradle
+          test -f source-release/app/build.gradle
+          test -f source-release/signing/release-keystore.p12.enc
+
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+
           export SHOP_SIGNING_KEYSTORE_PATH="$RUNNER_TEMP/shop-price-release.p12"
           openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
-            -in source-v112/signing/release-keystore.p12.enc \
+            -in source-release/signing/release-keystore.p12.enc \
             -out "$SHOP_SIGNING_KEYSTORE_PATH" \
             -pass env:SHOP_SIGNING_PASSWORD
-          (cd source-v112 && gradle --no-daemon :app:assembleRelease)
-          APK=source-v112/app/build/outputs/apk/release/app-release.apk
+
+          (cd source-release && gradle --no-daemon :app:assembleRelease)
+
+          APK=source-release/app/build/outputs/apk/release/app-release.apk
           test -s "$APK"
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" | tee release-signature-info.txt
           grep -qi 'ec1210e1e87ce2063f3caa5eb24dbb05b141c20433ae8df821f0cefd31057f3f' release-signature-info.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: shop-price-scanner-signed-v1.1.2
+          name: shop-price-scanner-signed-release
           path: |
-            source-v112/app/build/outputs/apk/release/app-release.apk
+            source-release/app/build/outputs/apk/release/app-release.apk
             release-signature-info.txt
           if-no-files-found: error
