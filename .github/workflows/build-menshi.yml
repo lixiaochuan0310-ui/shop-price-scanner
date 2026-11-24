@@ -1,0 +1,62 @@
+name: 门市进销存 - 正式固定签名 APK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'menshi-stock-v*-fixed-sign-source.zip'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      SHOP_SIGNING_PASSWORD: ${{ secrets.SHOP_SIGNING_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: 编译独立门市进销存 APK（同一正式签名）
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${SHOP_SIGNING_PASSWORD:-}" ]; then
+            echo '::error::缺少仓库 Secret：SHOP_SIGNING_PASSWORD'
+            exit 1
+          fi
+          ZIP="$(find . -maxdepth 1 -name 'menshi-stock-v*-fixed-sign-source.zip' -printf '%f\n' | sort -V | tail -n 1)"
+          test -n "$ZIP" || { echo '::error::未找到门市进销存源码 ZIP'; exit 1; }
+          mkdir -p store-source
+          unzip -q "$ZIP" -d store-source
+          test -f store-source/settings.gradle
+          test -f store-source/app/build.gradle
+          test -s store-source/signing/release-keystore.p12.enc
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+          export SHOP_SIGNING_KEYSTORE_PATH="$RUNNER_TEMP/menshi-fixed-release.p12"
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 \
+            -in store-source/signing/release-keystore.p12.enc \
+            -out "$SHOP_SIGNING_KEYSTORE_PATH" \
+            -pass env:SHOP_SIGNING_PASSWORD
+          (cd store-source && gradle --no-daemon :app:assembleRelease)
+          APK=store-source/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs "$APK" | tee store-signature.txt
+          grep -qi 'ec1210e1e87ce2063f3caa5eb24dbb05b141c20433ae8df821f0cefd31057f3f' store-signature.txt
+          # 不接收无签名或签名变化的 APK 作为正式交付
+          mkdir -p output
+          cp "$APK" output/门市进销存_正式签名_v1.0.0.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 门市进销存-正式APK
+          path: |
+            output/门市进销存_正式签名_v1.0.0.apk
+            store-signature.txt
+          if-no-files-found: error
